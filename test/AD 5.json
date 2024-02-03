@@ -1,0 +1,11 @@
+{
+    "title": "AD 5",
+    "startAt": "2023-12-10T03:00:00.000Z",
+    "endAt": "2024-12-31T15:00:00.000Z",
+    "conditions": {
+        "ageStart": 20,
+        "ageEnd": 40,
+        "country": ["TW", "JP"],
+        "platform": ["ios"]
+    }
+}

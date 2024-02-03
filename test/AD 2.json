@@ -1,0 +1,10 @@
+{
+    "title": "AD 2",
+    "startAt": "2023-12-10T03:00:00.000Z",
+    "endAt": "2024-12-31T16:00:00.000Z",
+    "conditions": {
+        "ageStart": 20,
+        "country": ["TW", "JP"],
+        "platform": ["android", "ios"]
+    }
+}
