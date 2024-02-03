@@ -1,5 +1,8 @@
 # Dcard 2024 Intern Backend Homework
 
+## Spec Description
+[spec.pdf](/2024%20Backend%20Intern%20Assignment.pdf)
+
 ## Prerequisite
 * Go
 * PostgreSQL
