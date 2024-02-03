@@ -2,6 +2,7 @@ package get_ads
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,33 +11,40 @@ import (
 	"gopkg.in/guregu/null.v4"
 )
 
-
-type ReqAd struct {
+type AdRequest struct {
 	Offset   int      `form:"offset" binding:"min=0,max=100"`
 	Limit    int      `form:"limit,default=5" binding:"min=1,max=100"`
-	Age      null.Int `form:"age" binding:"min=0,max=100"` // 0 as null
-	Gender   string   `form:"gender"`
-	Country  string   `form:"country"`
-	Platform string   `form:"platform"`
+	Age      null.Int `form:"age" binding:"min=1,max=100"`
+	Gender   string   `form:"gender" binding:"omitempty,oneof= M F"`
+	Country  string   `form:"country" binding:"omitempty,iso3166_1_alpha2"`
+	Platform string   `form:"platform" binding:"omitempty,oneof= android ios web"`
 }
 
-type ResAd struct {
+type AdInfo struct {
 	Title string    `json:"title"`
 	EndAt time.Time `json:"endAt"`
 }
 
-func GetAds(c *gin.Context) {
-	db, err := sql.Open("postgres", "dbname=ad sslmode=disable")
-	checkErr(err)
+type AdResponse struct {
+	Items []AdInfo `json:"items"`
+}
 
-	var data ReqAd
-	if err = c.BindQuery(&data); err != nil {
+func GetAds(c *gin.Context) {
+	var req AdRequest
+	if err := c.BindQuery(&req); err != nil {
 		c.JSON(http.StatusBadRequest, err.Error())
 		return
 	}
-	fmt.Println(data)
+	if err := checkAge(req.Age); err != nil {
+		c.JSON(http.StatusBadRequest, err.Error())
+		return
+	}
 
-	fmt.Println("Successfully created connection to database")
+	db, err := sql.Open("postgres", "dbname=ad sslmode=disable")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	condition := `
 		($1::int IS NULL OR age_start IS NULL OR age_start <= $1)
@@ -46,27 +54,34 @@ func GetAds(c *gin.Context) {
 		AND ($3 = '' OR country IS NULL OR $3 = ANY(country))
 		AND ($4 = '' OR platform IS NULL OR $4 = ANY(platform))
 	`
-
 	sqlStatement := fmt.Sprintf("SELECT title, end_at FROM ad WHERE %s ORDER BY end_at ASC LIMIT $6 OFFSET $5", condition)
 
-	rows, err := db.Query(sqlStatement, data.Age, data.Gender, data.Country, data.Platform, data.Offset, data.Limit)
-	checkErr(err)
+	rows, err := db.Query(sqlStatement, req.Age, req.Gender, req.Country, req.Platform, req.Offset, req.Limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	resData := []ResAd{}
+	ads := []AdInfo{}
 
 	for rows.Next() {
-		var resAd ResAd
-		err = rows.Scan(&resAd.Title, &resAd.EndAt)
-		checkErr(err)
-		resData = append(resData, resAd)
+		var ad AdInfo
+		err = rows.Scan(&ad.Title, &ad.EndAt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		ads = append(ads, ad)
 	}
 
-	// will output : {"lang":"GO\u8bed\u8a00","tag":"\u003cbr\u003e"}
-	c.AsciiJSON(http.StatusOK, resData)
+	adRes := AdResponse{Items: ads}
+
+	c.AsciiJSON(http.StatusOK, adRes)
 }
 
-func checkErr(err error) {
-	if err != nil {
-		panic(err)
+func checkAge(age null.Int) error {
+	if age.Valid && (age.Int64 < 1 || age.Int64 > 100) {
+		return errors.New("age should be between 1 and 100")
 	}
+	return nil
 }
