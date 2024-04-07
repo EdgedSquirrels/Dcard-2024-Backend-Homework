@@ -1,28 +1,15 @@
 package main
 
 import (
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
-
-func checkErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func DeleteAds() {
-	db, err := sql.Open("postgres", "dbname=ad sslmode=disable")
-	checkErr(err)
-
-	_, err = db.Exec("DELETE FROM ad")
-	checkErr(err)
-}
 
 type TestCase struct {
 	name         string
@@ -33,8 +20,17 @@ type TestCase struct {
 	expectedBody string
 }
 
+func testAPI(t *testing.T, router *gin.Engine, req *http.Request, test TestCase, wg *sync.WaitGroup) {
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, test.expectedCode, w.Code)
+	if test.expectedBody != "" {
+		assert.Equal(t, test.expectedBody, w.Body.String())
+	}
+	wg.Done()
+}
+
 func TestPostGetAds(t *testing.T) {
-	DeleteAds()
 	router := setupRouter()
 
 	testCases := []TestCase{
@@ -45,7 +41,7 @@ func TestPostGetAds(t *testing.T) {
 		{"post AD 3", "POST", "/api/v1/ad", "test/AD 3.json", http.StatusBadRequest, ""},
 		{"post AD 4", "POST", "/api/v1/ad", "test/AD 4.json", http.StatusOK, ""},
 		{"post AD 5", "POST", "/api/v1/ad", "test/AD 5.json", http.StatusOK, ""},
-		{"post AD 6", "POST", "/api/v1/ad", "test/AD 3.json", http.StatusBadRequest, ""},
+		{"post AD 6", "POST", "/api/v1/ad", "test/AD 6.json", http.StatusBadRequest, ""},
 		{"get ads", "GET", "/api/v1/ad?age=30", "", http.StatusOK, `{"items":[{"title":"AD 5","endAt":"2024-12-31T15:00:00Z"},{"title":"AD 2","endAt":"2024-12-31T16:00:00Z"},{"title":"AD 3","endAt":"2024-12-31T16:00:00Z"}]}`},
 		{"get ads", "GET", "/api/v1/ad?age=50", "", http.StatusOK, `{"items":[{"title":"AD 2","endAt":"2024-12-31T16:00:00Z"}]}`},
 		{"get ads", "GET", "/api/v1/ad?platform=ios&limit=1&offset=1", "", http.StatusOK, `{"items":[{"title":"AD 2","endAt":"2024-12-31T16:00:00Z"}]}`},
@@ -59,7 +55,8 @@ func TestPostGetAds(t *testing.T) {
 		if testCase.bodyPath != "" {
 			f, err := os.Open(testCase.bodyPath)
 			checkErr(err)
-			req, _ = http.NewRequest(testCase.method, testCase.url, f)
+			req, err = http.NewRequest(testCase.method, testCase.url, f)
+			checkErr(err)
 		}
 		router.ServeHTTP(w, req)
 		assert.Equal(t, testCase.expectedCode, w.Code)
@@ -67,4 +64,15 @@ func TestPostGetAds(t *testing.T) {
 			assert.Equal(t, testCase.expectedBody, w.Body.String())
 		}
 	}
+
+	// send the last test 1000 times to check the performance
+	var wg sync.WaitGroup
+	test_num := 1000
+	wg.Add(test_num)
+	test := testCases[len(testCases)-1]
+	req, _ := http.NewRequest(test.method, test.url, nil)
+	for i := 0; i < test_num; i++ {
+		go testAPI(t, router, req, test, &wg)
+	}
+	wg.Wait()
 }

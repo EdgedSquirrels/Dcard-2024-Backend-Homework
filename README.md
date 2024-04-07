@@ -1,34 +1,42 @@
 # Dcard 2024 Intern Backend Homework
-
 ## Spec Description
-[spec.pdf](/2024%20Backend%20Intern%20Assignment.pdf)
+[Decard 2024 Backend Homework Spec](https://drive.google.com/file/d/1dnDiBDen7FrzOAJdKZMDJg479IC77_zT/view)
 
 ## Prerequisite
-* Go
-* PostgreSQL
+* Go (1.22.1)
+* Docker
 
 ## Quick Start
-Run the service:
+* Set up postgreSQL Docker image
+```bash
+$ docker run \
+--rm --name postgres \
+-e POSTGRES_USER=postgres \
+-e POSTGRES_PASSWORD=postgres \
+-e POSTGRES_DB=ad \
+-p 5432:5432 \
+-d postgres:latest
+```
+
+* Run the service:
 ```bash
 $ go run main.go
 ```
 
-linting
+* Testing
 ```bash
-$ go vet ./..
-```
+$ go test
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:   export GIN_MODE=release
+ - using code:  gin.SetMode(gin.ReleaseMode)
 
-test
+PASS
+ok      dcard2024       2.553s
+```
+## API Usages
+* Post new advertisement
 ```bash
-$ go test ./...
-ok      dcard2024       0.099s
-?       dcard2024/internal/get_ads      [no test files]
-?       dcard2024/internal/post_ads     [no test files]
-```
-## Usage
-Post new advertisement
-```
-curl -X POST -H "Content-Type: application/json" \
+$ curl -X POST -H "Content-Type: application/json" \
   "http://localhost:8080/api/v1/ad" \
   --data '{
      "title": "AD 55",
@@ -40,80 +48,55 @@ curl -X POST -H "Content-Type: application/json" \
         "platform": ["android", "ios"]
      }
   }'
+# Response (information of the added advertisement):
+{"Title":"AD 55","StartAt":"2023-12-10T03:00:00Z","EndAt":"2023-12-31T16:00:00Z","Conditions":{"AgeStart":20,"AgeEnd":null,"Gender":null,"Country":["TW","JP"],"Platform":["android","ios"]}}
 ```
 
-Get advertisements
-
-* Query:
-  ```
-  curl -X GET -H "Content-Type: application/json" \
-  "http://localhost:8080/api/v1/ad?offset=10&limit=2&age=24&gender=F&country=TW&platform=ios"
-  ```
-* Response:
-  ```json
-  {"items":[{"title": "AD 1","endAt" "2023-12-22T01:00:00.000Z"},{"title": "AD 31","endAt" "2023-12-30T12:00:00.000Z"}]}
-  ```
-
-## PostgreSQL Common Commands
-Open PostgreSQL
+* Get advertisements
 ```bash
-$ sudo -u postgres psql
+$ curl -X GET -H "Content-Type: application/json" \
+"http://localhost:8080/api/v1/ad?offset=0&limit=2&age=24&gender=F&country=TW&platform=ios"
+
+# Response:
+{"items":[{"title":"AD 1","endAt":"2023-12-22T01:00:00.000Z"},{"title":"AD 31","endAt":"2023-12-30T12:00:00.000Z"}]}
 ```
 
-Add user to PostgreSQL
+## File Structure
 ```
-$ sudo -i -u postgres
-~$ createuser --interactive
-~$ Enter name of role to add: <username>
-$ Shall the new role be a superuser? (y/n) y
-postgres@<host>:~$ exit
-```
-
-> In this project I remove password requirement in my PostgreSQL.
-> Run the following to get the path of `pg_hba.conf`.
-> ```
-> $ psql
-> # SHOW hba_file;
-> ```
-> Then set authentication to `trust` in `pg_hba.conf`.  
-> Ref: https://dba.stackexchange.com/questions/83164/postgresql-remove-password-requirement-for-user-postgres
-
-Postgre CLI
-```
-$ psql
-\c ads;    # use database ad
-\dt;       # show all the table in the database
-\conninfo; # get connection information
-```
-## SQL Common Commands
-Create table
-```
-CREATE TABLE ad ( 
-  title text,
-  startAt timestamp,
-  endAt timestamp,
-  ageStart int,
-  ageEnd int,
-  gender text[],
-  country text[],
-  platform text[]
-);
+├── go.mod
+├── go.sum
+├── internal
+│   ├── get_ads
+│   │   └── get_ads.go (GET endpoint implementation)
+│   └── post_ads
+│       └── post_ads.go (POST endpoint implementation)
+├── main.go
+├── main_test.go
+├── README.md
+└── test
+    ├── (json files of unit test cases)
 ```
 
-Insert row
+## Idea & Design Choice
+### API Format
+Generally, I applied the same API format as the API example in the spec. Most of the parameters are verified via `binding`. In addition, I also checked that `AgeStart > AgeEnd` should be regarded as an invalid request.
+```go
+type Advertisement struct {
+	Title      string    `binding:"required"`
+	StartAt    time.Time `binding:"required"`
+	EndAt      time.Time `binding:"required"`
+	Conditions struct {
+		AgeStart null.Int
+		AgeEnd   null.Int
+		Gender   []string `binding:"dive,oneof= M F"`
+		Country  []string `binding:"dive,iso3166_1_alpha2"`
+		Platform []string `binding:"dive,oneof= android ios web"`
+	} `binding:"required"`
+}
 ```
-INSERT INTO ad (title, start_at, end_at, age_start, country)
-VALUES ('AD 55', '2023-12-10T03:00:00.000Z', '2024-12-31T16:00:00.000Z', 20, ARRAY ['TW']);
-```
+### Database
+Since the advertisement format is determined. I did not chose a NoSQL database for better performance. Since I have used MySQL before, I decided to use `PostgreSQL` as a trial. Due to the tedious database configuration, I used docker image for the database.
 
-Delete every row in table
-```
-DELETE FROM ad;
-```
-
-Drop table
-```
-DROP TABLE IF EXISTS ad;
-```
-
-
+### Testing
+* Correctness: It contains some test cases to verify the correctness of the AD Assigner. Those includes query formats and AD responses.
+* Performance: I tried to send 1000 requests at the end of the test, but it took about 2.5 seconds. It showed that it can only handles roughly 400 requests per second. This homework aims to reach 10,000 requests per second. Perhaps cache storage is needed for this homework to reach the target performance.

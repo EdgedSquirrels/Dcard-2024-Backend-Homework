@@ -49,7 +49,7 @@ func PostAds(c *gin.Context) {
 		return
 	}
 
-	db, err := sql.Open("postgres", "dbname=ad sslmode=disable")
+	db, err := sql.Open("postgres", "user=postgres password=postgres dbname=ad port=5432 sslmode=disable")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return

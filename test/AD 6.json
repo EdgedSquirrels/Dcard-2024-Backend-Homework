@@ -5,7 +5,7 @@
     "conditions": {
         "ageStart": 20,
         "ageEnd": 40,
-        "country": ["TT", "JP"],
+        "country": ["QQ", "JP"],
         "platform": ["ios"]
     }
 }
